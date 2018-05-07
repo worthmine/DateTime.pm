@@ -1,0 +1,361 @@
+version: 2.1
+
+orbs:
+  win: circleci/windows@1.0.0
+
+references:
+  authordeps_prereqs_key: &authordeps_prereqs_key v3-authordeps-ubuntu-{{ checksum "/tmp/authordeps" }}-{{ checksum "/tmp/authordeps-perl-version" }}
+  runtime_prereqs_key: &runtime_prereqs_key v3-runtime-prereqs-ubuntu-{{ checksum "/tmp/circleci-perl-helpers-build-dir/cpanfile" }}-{{ checksum "/tmp/runtime-perl-version" }}
+
+  shared: &shared
+    environment:
+      TZ: UTC
+    steps:
+      - checkout
+      - run:
+          command: pre-build
+      - restore_cache:
+          keys:
+            - *authordeps_prereqs_key
+      - run:
+          command: build-dist
+      - save_cache:
+          key: *authordeps_prereqs_key
+          paths:
+            - ~/project/local
+      - restore_cache:
+          keys:
+            - *runtime_prereqs_key
+      - run:
+          command: install-prereqs
+      - save_cache:
+          key: *runtime_prereqs_key
+          paths:
+            - /tmp/circleci-perl-helpers-build-dir/local
+      - run:
+          command: prep-distro-for-tests
+      - run:
+          command: run-tests-with-prove
+
+  shared-blead: &shared-blead
+    environment:
+      TZ: UTC
+      CIRCLECI_PERL_HELPERS_PERL: blead
+      CIRCLECI_PERL_HELPERS_PERL_LIB_DIR: /root/perl5/perlbrew/perls/blead/lib/
+    steps:
+      - checkout
+      - run:
+          command: |
+            THREAD_ARG=""
+            if [ -n "$WITH_PERL_THREADS" ]; then
+                THREAD_ARG="--threads"
+            fi
+            perlbrew install --verbose $THREAD_ARG --notest --noman -j $(nproc) blead
+      - run:
+          command: pre-build
+      - run:
+          command: build-dist
+      - run:
+          command: install-prereqs
+      - run:
+          command: prep-distro-for-tests
+      - run:
+          command: run-tests-with-prove
+
+jobs:
+  "v5-30-linux":
+    docker:
+      - image: houseabsolute/circleci-perl-helpers-ubuntu:5.30
+        environment:
+          TEST_XT: 1
+    <<: *shared
+  "v5-30-thread-linux":
+    docker:
+      - image: houseabsolute/circleci-perl-helpers-ubuntu:5.30-thread
+    <<: *shared
+  "v5-28-linux":
+    docker:
+      - image: houseabsolute/circleci-perl-helpers-ubuntu:5.28
+    <<: *shared
+  "v5-28-thread-linux":
+    docker:
+      - image: houseabsolute/circleci-perl-helpers-ubuntu:5.28-thread
+    <<: *shared
+  "v5-26-linux":
+    docker:
+      - image: houseabsolute/circleci-perl-helpers-ubuntu:5.26
+    <<: *shared
+  "v5-26-thread-linux":
+    docker:
+      - image: houseabsolute/circleci-perl-helpers-ubuntu:5.26-thread
+    <<: *shared
+  "v5-24-linux":
+    docker:
+      - image: houseabsolute/circleci-perl-helpers-ubuntu:5.24
+    <<: *shared
+  "v5-24-thread-linux":
+    docker:
+      - image: houseabsolute/circleci-perl-helpers-ubuntu:5.24-thread
+    <<: *shared
+  "v5-22-linux":
+    docker:
+      - image: houseabsolute/circleci-perl-helpers-ubuntu:5.22
+    <<: *shared
+  "v5-22-thread-linux":
+    docker:
+      - image: houseabsolute/circleci-perl-helpers-ubuntu:5.22-thread
+    <<: *shared
+  "v5-20-linux":
+    docker:
+      - image: houseabsolute/circleci-perl-helpers-ubuntu:5.20
+    <<: *shared
+  "v5-20-thread-linux":
+    docker:
+      - image: houseabsolute/circleci-perl-helpers-ubuntu:5.20-thread
+    <<: *shared
+  "v5-18-linux":
+    docker:
+      - image: houseabsolute/circleci-perl-helpers-ubuntu:5.18
+    <<: *shared
+  "v5-18-thread-linux":
+    docker:
+      - image: houseabsolute/circleci-perl-helpers-ubuntu:5.18-thread
+    <<: *shared
+  "v5-16-linux":
+    docker:
+      - image: houseabsolute/circleci-perl-helpers-ubuntu:5.16
+    <<: *shared
+  "v5-16-thread-linux":
+    docker:
+      - image: houseabsolute/circleci-perl-helpers-ubuntu:5.16-thread
+    <<: *shared
+  "v5-14-linux":
+    docker:
+      - image: houseabsolute/circleci-perl-helpers-ubuntu:5.14
+    <<: *shared
+  "v5-14-thread-linux":
+    docker:
+      - image: houseabsolute/circleci-perl-helpers-ubuntu:5.14-thread
+    <<: *shared
+  "v5-12-linux":
+    docker:
+      - image: houseabsolute/circleci-perl-helpers-ubuntu:5.12
+    <<: *shared
+  "v5-12-thread-linux":
+    docker:
+      - image: houseabsolute/circleci-perl-helpers-ubuntu:5.12-thread
+    <<: *shared
+  "v5-10-linux":
+    docker:
+      - image: houseabsolute/circleci-perl-helpers-ubuntu:5.10
+    <<: *shared
+  "v5-10-thread-linux":
+    docker:
+      - image: houseabsolute/circleci-perl-helpers-ubuntu:5.10-thread
+    <<: *shared
+  "dev-linux":
+    docker:
+      - image: houseabsolute/circleci-perl-helpers-ubuntu:dev
+    <<: *shared
+  "dev-thread-linux":
+    docker:
+      - image: houseabsolute/circleci-perl-helpers-ubuntu:dev-thread
+    <<: *shared
+  "blead-linux":
+    docker:
+      - image: houseabsolute/circleci-perl-helpers-ubuntu:blead
+    <<: *shared-blead
+  "blead-thread-linux":
+    docker:
+      # There's only one blead image since we'll install the Perl we want when
+      # the job runs.
+      - image: houseabsolute/circleci-perl-helpers-ubuntu:blead
+        environment:
+          WITH_PERL_THREADS: 1
+    <<: *shared-blead
+  "windows":
+    executor:
+      name: win/vs2019
+      shell: bash.exe
+    steps:
+      - checkout
+      - restore_cache:
+          keys:
+            - v5-perl-windows
+      - run:
+          name: Install or upgrade strawberryperl choco package if needed
+          command: |
+            set -eo pipefail
+            choco upgrade strawberryperl --yes
+      - save_cache:
+          key: v5-perl-windows
+          paths:
+            - C:\strawberry
+            - C:\ProgramData\chocolatey\lib
+      - run:
+          name: Save perl -V for prereqs cache key
+          command: |
+            set -eo pipefail
+            export PATH=/c/strawberry/perl/bin:/c/strawberry/perl/site/bin:/c/strawberry/c/bin:$PATH
+            perl -V
+            perl -V > perl-version
+      - restore_cache:
+          keys:
+            - v5-prereqs-windows-{{ checksum "perl-version" }}
+      # It seems like the installed Perl scripts (dzil, prove, etc.) don't use
+      # the right Perl based on their shbang, so we need to use the Perl in
+      # our path to execute the script instead.
+      - run:
+          name: Install dzil and authordeps
+          command: |
+            set -eo pipefail
+            export PATH=/c/strawberry/perl/bin:/c/strawberry/perl/site/bin:/c/strawberry/c/bin:$PATH
+            cpanm -n Dist::Zilla
+            perl $(which dzil) authordeps | grep -v '^inc::' | cpanm -n
+      - run:
+          name: dzil build
+          command: |
+            set -eo pipefail
+            export PATH=/c/strawberry/perl/bin:/c/strawberry/perl/site/bin:/c/strawberry/c/bin:$PATH
+            perl $(which dzil) build --in="/tmp/build"
+      - run:
+          name: Install runtime and test prereqs
+          command: |
+            set -eo pipefail
+            export PATH=/c/strawberry/perl/bin:/c/strawberry/perl/site/bin:/c/strawberry/c/bin:$PATH
+            cd /tmp/build
+            cpanm -n --installdeps .
+      - save_cache:
+          key: v5-prereqs-windows-{{ checksum "perl-version" }}
+          paths:
+            - C:\strawberry\perl\site
+      - run:
+          name: make
+          command: |
+            set -eo pipefail
+            export PATH=/c/strawberry/perl/bin:/c/strawberry/perl/site/bin:/c/strawberry/c/bin:$PATH
+            cd /tmp/build
+            perl Makefile.PL
+            gmake -j 4
+      - run:
+          name: Run tests
+          command: |
+            set -eo pipefail
+            export PATH=/c/strawberry/perl/bin:/c/strawberry/perl/site/bin:/c/strawberry/c/bin:$PATH
+            cd /tmp/build
+            prove.bat -br -j 4 t/
+  "macos":
+    macos:
+      xcode: "11.0.0"
+    environment:
+      PERL_LOCAL: /Users/distiller/perl-local
+      PERL5LIB: /Users/distiller/perl-local/lib/perl5:/Users/distiller/perl-local/lib/perl5/darwin-thread-multi-2level
+    steps:
+      - checkout
+      - restore_cache:
+          keys:
+            - v5-perl-macos
+      - run:
+          name: Install or upgrade perl brew package if needed
+          command: |
+            set -eo pipefail
+            # This update process is incredibly slow. I think CircleCI needs
+            # to keep this up to date in their images. See
+            # https://discuss.circleci.com/t/brew-update-is-painfully-slow/32871
+            # for my bug report.
+            export HOMEBREW_NO_AUTO_UPDATE=1
+            export HOMEBREW_NO_INSTALL_CLEANUP=1
+            if [ ! -d /usr/local/Cellar/perl/ ]; then
+                brew install perl
+            else
+                set +e
+                brew upgrade perl || brew link perl || exit 1
+            fi
+      - save_cache:
+          key: v5-perl-macos
+          paths:
+            /usr/local/Cellar/perl/
+      - run:
+          name: Save perl -V for prereqs cache key
+          command: |
+            set -eo pipefail
+            perl -V
+            perl -V > /tmp/perl-version
+      - run:
+          name: Install cpm
+          command: |
+            mkdir -p $PERL_LOCAL/bin
+            curl -sL --compressed https://git.io/cpm > $PERL_LOCAL/bin/cpm
+            chmod 0755 $PERL_LOCAL/bin/cpm
+      - restore_cache:
+          keys:
+            - v8-prereqs-macos-{{ checksum "/tmp/perl-version" }}
+      - run:
+          name: Install dzil and authordeps
+          command: |
+            set -eo pipefail
+            perl $PERL_LOCAL/bin/cpm install --local-lib-contained=$PERL_LOCAL --verbose Dist::Zilla
+            perl $PERL_LOCAL/bin/cpm install --local-lib-contained=$PERL_LOCAL --verbose \
+                $( $PERL_LOCAL/bin/dzil authordeps \
+                   | grep -v '^inc::' )
+      - run:
+          name: dzil build
+          command: |
+            set -eo pipefail
+            $PERL_LOCAL/bin/dzil build --in="/tmp/build"
+      - run:
+          name: Install runtime and test prereqs
+          command: |
+            set -eo pipefail
+            cd /tmp/build
+            perl $PERL_LOCAL/bin/cpm install --local-lib-contained=$PERL_LOCAL --verbose
+      - save_cache:
+          key: v8-prereqs-macos-{{ checksum "/tmp/perl-version" }}
+          paths:
+            - /Users/distiller/perl-local
+      - run:
+          name: make
+          command: |
+            set -eo pipefail
+            cd /tmp/build
+            perl Makefile.PL
+            make -j 4
+      - run:
+          name: Run tests
+          command: |
+            set -eo pipefail
+            cd /tmp/build
+            prove -br -j 4 t/
+
+workflows:
+  version: 2
+  test-all-perls:
+    jobs:
+      - "v5-30-linux"
+      - "v5-30-thread-linux"
+      - "v5-28-linux"
+      - "v5-28-thread-linux"
+      - "v5-26-linux"
+      - "v5-26-thread-linux"
+      - "v5-24-linux"
+      - "v5-24-thread-linux"
+      - "v5-22-linux"
+      - "v5-22-thread-linux"
+      - "v5-20-linux"
+      - "v5-20-thread-linux"
+      - "v5-18-linux"
+      - "v5-18-thread-linux"
+      - "v5-16-linux"
+      - "v5-16-thread-linux"
+      - "v5-14-linux"
+      - "v5-14-thread-linux"
+      - "v5-12-linux"
+      - "v5-12-thread-linux"
+      - "v5-10-linux"
+      - "v5-10-thread-linux"
+      - "dev-linux"
+      - "dev-thread-linux"
+      - "blead-linux"
+      - "blead-thread-linux"
+      - "windows"
+      - "macos"
