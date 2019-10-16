@@ -1,8 +1,39 @@
 version: 2.1
 
+anchors: &coverage
+  description: |
+    Set this to enable coverage reporting for a test run. This will
+    use Devel::Cover to determine coverage. The exact value you set
+    this to determines how the report is handled.
+
+    The 'clover' and 'html' settings will simply produce artifacts
+    that are uploaded as part of the job.
+
+    The 'codecov' option will automatically upload your coverage
+    report to codecov.io.
+
+    The 'coveralls' option will upload the report to coveralls.io,
+    but you need to set the COVERALLS_REPO_TOKEN env var to make
+    this work.
+
+    The 'kritika' option will upload the report to kritika.io, but
+    you need to set the KRITIKA_TOKEN env var to make this work.
+  type: enum
+  enum:
+    - ""
+    - clover
+    - codecov
+    - coveralls
+    - html
+    - kritika
+  default: ""
+
 orbs:
   perl:
     description: Helpers for testing Perl project on Linux (in Docker) with CircleCI
+
+    orbs:
+      windows: circleci/windows@1.0.0
 
     commands:
       pre-build:
@@ -21,8 +52,9 @@ orbs:
         description: Restore cached authordeps needed to build the distro
         steps:
           - restore_cache:
+              name: Restore authordeps cache
               keys:
-                - v6-authordeps-linux-{{ checksum "/root/cache/authordeps" }}-{{ checksum "/root/cache/build-perl-version" }}
+                - v6-authordeps-linux-{{ checksum "~/cache/authordeps-cpanfile" }}-{{ checksum "~/cache/build-perl-version" }}
       install-authordeps:
         description: Install deps needed to build the distro
         steps:
@@ -33,8 +65,9 @@ orbs:
         description: Save authordeps needed to build the distro
         steps:
           - save_cache:
-              key: v6-authordeps-linux-{{ checksum "/root/cache/authordeps" }}-{{ checksum "/root/cache/build-perl-version" }}
-              paths: /root/perl-local/build-perl
+              name: Save cache of authordeps
+              key: v6-authordeps-linux-{{ checksum "~/cache/authordeps-cpanfile" }}-{{ checksum "~/cache/build-perl-version" }}
+              paths: ~/perl-local/build-perl
       build-dist:
         description: Build the distro and put it in a separate directory for test running
         steps:
@@ -58,8 +91,9 @@ orbs:
               condition: << parameters.disable-runtime-cache >>
               steps:
                 - restore_cache:
+                    name: Restore prereqs cache
                     keys:
-                      - v6-prereqs-linux-{{ checksum "/root/cache/prereqs-cpanfile" }}-{{ checksum "/root/cache/runtime-perl-version" }}
+                      - v6-prereqs-linux-{{ checksum "~/cache/prereqs-cpanfile" }}-{{ checksum "~/cache/runtime-perl-version" }}
       install-prereqs:
         description: Install deps needed to build the distro
         steps:
@@ -77,24 +111,142 @@ orbs:
               condition: << parameters.disable-runtime-cache >>
               steps:
                 - save_cache:
-                    key: v6-prereqs-linux-{{ checksum "/root/cache/prereqs-cpanfile" }}-{{ checksum "/root/cache/runtime-perl-version" }}
-                    paths: /root/perl-local/runtime-perl
+                    name: Save cache of prereqs
+                    key: v6-prereqs-linux-{{ checksum "~/cache/prereqs-cpanfile" }}-{{ checksum "~/cache/runtime-perl-version" }}
+                    paths: ~/perl-local/runtime-perl
       prep-distro-for-tests:
         description: Run final make/Build commands needed to prep distro for tests
         steps:
           - run:
               name: Run make or Build
               command: ~/circleci-perl-helpers-tools/bin/with-perl build-perl prep-for-tests.pl
-      run-test-with-prove:
-        description: Run tests with prove
+      run-tests:
+        description: Run tests
+        parameters:
+          coverage:
+            <<: *coverage
         steps:
           - run:
               name: Run tests
               command: ~/circleci-perl-helpers-tools/bin/with-perl build-perl run-tests.pl
+      store-test-results:
+        description: Store the test results for display in CircleCI.
+        steps:
+          - store_test_results:
+              path: ~/test-results
+      store-coverage-results:
+        description: Store coverage results as artifacts, if they exist.
+        steps:
+          - when:
+              condition: << parameters.coverage >>
+              steps:
+                - store_artifacts:
+                    path: ~/coverage
+
+      install-tools:
+        # This base64 blob is the result of running `tar -cvzf
+        # /tmp/tools.tar.gz ./tools && base64 /tmp/tools.tar.gz` in the root
+        # of the github.com:houseabsolute/circleci-perl-helpers repo. This
+        # works around the fact that the macOS and Windows builds run on an
+        # image that we don't supply. Unlike with Docker, there's no way to
+        # bake the helper tools into the base image/VM that CircleCI launches
+        # for non-Linux platforms.
+        # 
+        # There are some other ways to do this, for example downloading a
+        # tarball from the helpers repo's release page or cloning a tag from
+        # the helpers repo itself, but I don't love either solution. In both
+        # cases I would have to sync the release of this orb to publishing
+        # something in the repo. That's not a huge issue, but I really like
+        # the idea that the orb is totally self-contained. So once the orb is
+        # published, I know that version will work indefinitely no matter what
+        # I do with the repo. Ideally, CircleCI would
+        #
+        # On Windows a single echo command with the entire content fails with:
+        #     bash: -c: line 1: unexpected EOF while looking for matching `"'
+        #
+        # Presumably bash on Windows has a shorter limit for single commands.
+        description: Install the helper tools
+        # Install the helper tools steps
+        steps:
+          - run:
+              name: Install the helper tools - base64 spew part 1
+              command: |
+                set -e
+                set -x
+                echo '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' >> /tmp/tools-base64
+          - run:
+              name: Install the helper tools - base64 spew part 2
+              command: |
+                set -e
+                set -x
+                echo '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' >> /tmp/tools-base64
+          - run:
+              name: Turn base64 encoded tools into tarball and unpack
+              command: |
+                set -e
+                set -x
+                cat /tmp/tools-base64 | base64 --decode > /tmp/tools.tar.gz
+                mkdir ~/circleci-perl-helpers-tools
+                tar -xvzf /tmp/tools.tar.gz --strip-components 1 --directory ~/circleci-perl-helpers-tools
 
     jobs:
       linux-build-and-test:
-        description: Builds the Perl distro and runs its tests using prove
+        description: Builds the Perl distro in a Docker container (running Linux) and runs its tests
+        parameters:
+          image-name:
+            description: The name of the image to use.
+            type: string
+            default: "houseabsolute/circleci-perl-helpers-ubuntu"
+          perl-version:
+            description: Which version of Perl to use for this job. This will be used as a tag to select the Docker image.
+            type: string
+          run-xt-tests:
+            description: |
+              If this is true tests in the xt directory will be true, and the
+              AUTHOR_TESTING and RELEASE_TESTING env vars will be set to true
+              values when running tests.
+            type: boolean
+            default: false
+          disable-runtime-cache:
+            description: |
+              If this is true then caching of runtime deps will be
+              skipped. This should be true for all blead builds since blead's
+              ABI may change between runs, breaking previously compiled XS
+              code.
+            type: boolean
+            default: false
+          coverage:
+            <<: *coverage
+          debug:
+            description: Enable verbose output from each step.
+            type: boolean
+            default: false
+        docker:
+          - image: << parameters.image-name >>:<< parameters.perl-version >>
+            environment:
+              CCIPH_TEST_XT: <<# parameters.run-xt-tests >>1<</ parameters.run-xt-tests >>
+              CCIPH_DEBUG: <<# parameters.debug >>1<</ parameters.debug >>
+        steps:
+          - checkout
+          - pre-build:
+              perl-version: << parameters.perl-version >>
+          - restore-authordeps-cache
+          - install-authordeps
+          - save-authordeps-cache
+          - build-dist
+          - build-cpanfile
+          - restore-prereqs-cache:
+              disable-runtime-cache: << parameters.disable-runtime-cache >>
+          - install-prereqs
+          - save-prereqs-cache:
+              disable-runtime-cache: << parameters.disable-runtime-cache >>
+          - prep-distro-for-tests
+          - run-tests:
+              coverage: << parameters.coverage >>
+          - store-test-results
+
+      macos-build-and-test:
+        description: Builds the Perl distro on macOS and runs its tests
         parameters:
           perl-version:
             description: Which version of Perl to use for this job
@@ -114,16 +266,69 @@ orbs:
               code.
             type: boolean
             default: false
+          coverage:
+            <<: *coverage
           debug:
             description: Enable verbose output from each step.
             type: boolean
             default: false
-        docker:
-          - image: houseabsolute/circleci-perl-helpers-ubuntu:<< parameters.perl-version >>
-            environment:
-              CCI_PERL_HELPERS_TEST_XT: <<# parameters.run-xt-tests >>1<</ parameters.run-xt-tests >>
-              CCI_PERL_HELPERS_DEBUG: <<# parameters.debug >>1<</ parameters.debug >>
+        macos:
+          xcode: "11.0.0"
+        environment:
+          CCIPH_TEST_XT: <<# parameters.run-xt-tests >>1<</ parameters.run-xt-tests >>
+          CCIPH_DEBUG: <<# parameters.debug >>1<</ parameters.debug >>
+          CCIPH_FINAL_BUILD_DIR: ~/circleci-perl-helpers-build-dir
         steps:
+          - install-tools
+          - run:
+              name: Install perlbrew
+              command: curl -L https://install.perlbrew.pl | sh
+          - run:
+              name: Install cpm
+              command: |
+                mkdir ~/bin && \
+                curl -fsSL --compressed https://git.io/cpm > ~/bin/cpm && \
+                chmod 0755 ~/bin/cpm
+          - restore_cache:
+              name: Restore perl installations cache
+              keys:
+                - v6-perl-macos-build-perl=5.30.0-runtime-perl=<< parameters.perl-version >>
+          - run:
+              name: Perlbrew install Perl 5.30.0 as build-perl
+              command: |
+                if [ ! -d ~/perl5/perlbrew/perls/build-perl ]; then
+                    ~/perl5/perlbrew/bin/perlbrew install --verbose --notest --noman -j 4 --as build-perl 5.30.0
+                fi
+          - run:
+              name: Perlbrew install selected perl version as runtime-perl
+              command: |
+                if [ ! -d ~/perl5/perlbrew/perls/runtime-perl ]; then
+                    ~/perl5/perlbrew/bin/perlbrew install --verbose --notest --noman -j 4 --as runtime-perl << parameters.perl-version >>
+                fi
+          - save_cache:
+              name: Save cache of perl installations
+              key: v6-perl-macos-build-perl=5.30.0-runtime-perl=<< parameters.perl-version >>
+              paths:
+                - ~/perl5
+          - restore_cache:
+              name: Restore build tool modules cache
+              keys:
+                - v7-perl-macos-build-perl=5.30.0-{{ checksum "~/circleci-perl-helpers-tools/cpanfile" }}
+          - run:
+              name: Install tools prereqs
+              command: |
+                ~/perl5/perlbrew/bin/perlbrew exec --with build-perl \
+                ~/bin/cpm install \
+                --local-lib-contained ~/perl-local/build-perl \
+                --show-build-log-on-failure \
+                --verbose \
+                --workers 4 \
+                --cpanfile ~/circleci-perl-helpers-tools/cpanfile
+          - save_cache:
+              name: Save cache of build tool modules
+              key: v7-perl-macos-build-perl=5.30.0-{{ checksum "~/circleci-perl-helpers-tools/cpanfile" }}
+              paths:
+                - ~/perl-local/build-perl
           - checkout
           - pre-build:
               perl-version: << parameters.perl-version >>
@@ -138,16 +343,79 @@ orbs:
           - save-prereqs-cache:
               disable-runtime-cache: << parameters.disable-runtime-cache >>
           - prep-distro-for-tests
-          - run-test-with-prove
+          - run-tests:
+              coverage: << parameters.coverage >>
+          - store-test-results
+
+      windows-build-and-test:
+        description: Builds the Perl distro on Windows and runs its tests
+        parameters:
+          perl-version:
+            description: Which version of Perl to use for this job
+            type: string
+          run-xt-tests:
+            description: |
+              If this is true tests in the xt directory will be true, and the
+              AUTHOR_TESTING and RELEASE_TESTING env vars will be set to true
+              values when running tests.
+            type: boolean
+            default: false
+          coverage:
+            <<: *coverage
+          debug:
+            description: Enable verbose output from each step.
+            type: boolean
+            default: false
+        executor:
+          name: windows/vs2019
+          shell: bash.exe
+        environment:
+          CCIPH_TEST_XT: <<# parameters.run-xt-tests >>1<</ parameters.run-xt-tests >>
+          CCIPH_DEBUG: <<# parameters.debug >>1<</ parameters.debug >>
+          CCIPH_FINAL_BUILD_DIR: ~/circleci-perl-helpers-build-dir
+        steps:
+          - run:
+              command: echo $OSTYPE
+          - install-tools
+          - run:
+              name: Install or upgrade berrybrew choco package if needed
+              command: |
+                set -eo pipefail
+                choco upgrade berrybrew --yes
+          - run:
+              name: Berrybrew install Perl 5.30.0 as build-perl
+              command: berrybrew install 5.30.0_64
+          - run:
+              name: Berrybrew install selected perl version
+              command: berrybrew install 5.30.0_64
+          - checkout
+          - pre-build:
+              perl-version: << parameters.perl-version >>
+          - restore-authordeps-cache
+          - install-authordeps
+          - save-authordeps-cache
+          - build-dist
+          - build-cpanfile
+          - restore-prereqs-cache:
+              disable-runtime-cache: false
+          - install-prereqs
+          - save-prereqs-cache:
+              disable-runtime-cache: false
+          - prep-distro-for-tests
+          - run-tests:
+              coverage: << parameters.coverage >>
+          - store-test-results
 
 workflows:
   version: 2
   test-all-perls:
     jobs:
+      - perl/windows-build-and-test:
+          name: windows-5.28.2
+          perl-version: "5.28.2"
+          debug: true
       - perl/linux-build-and-test:
           name: linux-5.28.2
           perl-version: "5.28.2"
-      - perl/linux-build-and-test:
-          name: linux-blead
-          perl-version: "blead"
-          disable-runtime-cache: true
+          coverage: codecov
+          debug: true
